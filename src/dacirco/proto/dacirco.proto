@@ -1,0 +1,169 @@
+
+syntax = "proto3";
+option objc_class_prefix = "DCC";
+package dacirco_grpc_service;
+
+/**
+* The gRPC interface of the DaCirco controller
+*/
+service DaCircogRPCService{
+  /// The REST frontend calls this method when it recevies a new request.
+  rpc submit_request (TCRequest) returns (TCRequestReply)  {}
+  /// The REST frontend calls this method to answer a GET /jobs request.
+  rpc get_requests (Empty) returns (RequestIDList) {}
+  /// The REST frontend calls this method to answer a GET /jobs/job_id request.
+  rpc get_request (RequestID) returns (TCRequest) {}
+  /// The REST frontend calls this method to answer a GET /jobs/job_id/state request.
+  rpc get_request_status (RequestID) returns (TCRequestStatus) {}
+  /// The REST frontend calls this method to answer a GET /workers request.
+  rpc get_workers (Empty) returns (WorkerIDList) {}
+  /// The REST frontend calls this method to answer a GET /workers/worker_id request.
+  rpc get_worker (WorkerID) returns (WorkerFullDesc) {}
+  /// The REST frontend calls this method to answer a GET /workers/worker_id/state request.
+  rpc get_worker_status (WorkerID) returns (WorkerGrpcState) {}
+  /// Each transcoding worker calls this method whenever it *first* starts
+  //(i.e., one call only from each worker).
+  rpc register_worker (WorkerDesc) returns (gRPCServiceReply) {}
+  /// Transconding workers call this method to get their tasks.
+  rpc get_tasks (WorkerDesc) returns (stream TCTask) {} 
+  /// Transconding workers call this method to inform the controller about a (non-error) event.
+  rpc submit_event (GrpcEvent) returns (gRPCServiceReply) {}
+  /// Transconding workers call this method to inform the controller about a (non-error) event.
+  rpc submit_error (GrpcErrorEvent) returns (gRPCServiceReply) {}
+}
+
+/// Message sent by the REST frontend and by the controller.  It contains all the parameters of the
+/// request.
+message TCRequest {
+  string input_video = 1; /// The name of the input video.
+  string output_video = 2; /// The name of the output video.
+  int32  bitrate = 3;  /// The desired birate in bit per second.
+  string speed = 4;  /// How fast/slow should the enconding process be.
+}
+
+/// Response for the submit_request method (sent from the controller to the REST API)
+message TCRequestReply {
+  bool success = 1;  /// True means no error, false means error.
+  string error_message = 2;  /// If success is false, this field contains the error message.
+  string request_id = 3; /// The UUID for this request.
+}
+
+/// Message sent by the REST frontend.  It contains only the request ID
+message RequestID {
+  string request_id = 1;
+}
+
+/// Response for the get_requests method (sent from the controller to the REST API)
+message RequestIDList {
+  repeated string request_ids = 1; /// The list of the request IDs.
+}
+
+/// Response for the get_request_status method (sent from the controller to the REST API)
+message TCRequestStatus {
+  enum RequestStatusEnum {
+    INVALID = 0; /// O is the default value, this way we are sure that we are not going to send a message with the wrong type.
+    WAITING = 1; /// The request is waiting for a worker to proceess it.
+    STARTED = 3; /// A worker has started transcoding the video.
+    COMPLETED = 4; /// The worker has successfully uploaded the ouput file.
+    ERROR = 5;  /// There was an error when processing the request.
+    NOT_FOUND = 6; /// The requested ID given by the user is unknonw.
+  }
+  RequestStatusEnum request_status = 1;  /// The type of the event
+}
+
+/// Message sent by the REST frontend.  It contains only the worker ID
+message WorkerID {
+  string worker_id = 1;
+}
+
+/// Response for the get_workers method (sent from the controller to the REST API)
+message WorkerIDList {
+  repeated string worker_ids = 1; /// The list of the worker IDs.
+}
+
+/// Response for the get_worker method (sent from the controller to the REST API)
+message WorkerFullDesc {
+  string name = 1; /// The name of the worker.
+  string id = 2; /// The id of the worker.
+  string cpus = 3;  /// The number of vcpus of the worker.
+  string memory = 4;  /// The memory of the worker.
+  string node = 5; /// The node running the worker.
+}
+
+/// Response for the get_request_status method (sent from the controller to the REST API)
+message WorkerGrpcState {
+  enum WorkerStatusEnum {
+    INVALID = 0; /// O is the default value, this way we are sure that we are not going to send a message with the wrong type.
+    BOOTING = 1;  /// The worker is booting.
+    DOWNLOADING_FILE = 2; /// The worker is downloading a file.
+    TRANSCODING = 3; /// The worker is transcoding a video.
+    UPLOADING_FILE = 4; /// The worker is uploading the ouput file.
+    IDLE = 5;  /// The worker is idle.
+    STOPPED = 6; /// The worker has been deleted.
+    NOT_FOUND = 7; /// The worker ID given by the user is unknonw.
+  }
+  WorkerStatusEnum worker_status = 1;  /// The type of the event
+}
+
+/// Reply messsage from the server to the client and to the workers.  Indicates
+/// whethere the request succeeded or not.  In case of failure, it contains an
+/// error message.
+message gRPCServiceReply {
+  bool success = 1;  /// True means no error, false means error.
+  string error_message = 2;  /// If success is false, this field contains the error message.
+}
+
+/// It uniquily identifies a transcoding worker.  Sent in calls from the workers
+/// to the server so that the server can tell which worker is the sender of the
+/// message.
+message WorkerDesc {
+  /// The name of the worker (it should be unique but it is not strictly needed).
+  string name = 1;
+  /// The UUID of the worker (MUST BE UNIQUE)
+  string id = 2;  
+}
+
+/// Sent from the server to the workers.  It identifies a single transcoding
+/// task.
+message TCTask {
+  string input_video = 1;  /// The name of the input video.
+  string output_video = 2;  /// The name of the output video.
+  int32  bitrate = 3;  /// The desired bitrate.
+  string speed = 4;  /// How fast the transcoding process should be.
+  string request_id = 5; /// The UUID of the request.
+  string worker_id = 6;  /// The UUID of the worker to which this task has been assigned.
+  string task_id = 7;  /// The unique identifier of this task.
+}
+
+
+/// Sent from a worker to the server.  It contains the worker and task id so that the 
+/// server knows which worker and which task have generated this event
+message GrpcEvent{
+  enum GrpcEventTypeEnum {
+    INVALID = 0; /// O is the default value, this way we are sure that we are not going to send a message with the wrong type.
+    FILE_DOWNLOADED = 1; /// The worker has successfully dowloaded the input file.
+    TRANSCODING_COMPLETED = 3; /// The worker has successfully transcoded the video.
+    FILE_UPLOADED = 4; /// The worker has successfully uploaded the ouput file.
+    KEEPALIVE = 5;  /// The worker is still alive.
+  }
+  GrpcEventTypeEnum event_type = 1;  /// The type of the event
+  string worker_id = 2;  /// The UUID of the worker.
+  string task_id = 3;  /// The UUID of the task.
+}
+
+/// Sent from a worker to the server. It contains the worker and task id so that the 
+/// server knows which worker and which task have generated this event
+message GrpcErrorEvent{
+  enum GrpcErrorType {
+    INVALID = 0; /// O is the default value, this way we are sure that we are not going to send a message with the wrong type.
+    TRANSCODING_FAILED = 1; /// ffmpeg returned an error. 
+    STORAGE_ERROR = 2; /// The storage system returned an error.
+  }
+  GrpcErrorType error_type = 1;  // The type of the error.
+  string error_message = 2; /// The error message.
+  string worker_id = 3;  /// The UUID of the worker.
+  string task_id = 4;  /// The UUID of the task.
+}
+
+/// Empty message (used when there are no arguments or nothing is returned)
+message Empty{}

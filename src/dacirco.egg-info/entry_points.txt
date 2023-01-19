@@ -1,0 +1,11 @@
+[console_scripts]
+dacirco_client = dacirco.client.client:submit_request
+dacirco_controller = dacirco.controller:run
+dacirco_get_node_stats = dacirco.analytics.get_node_stats:process_csv_file
+dacirco_process_log = dacirco.analytics.process_event_logs:process_event_log
+dacirco_rest_api = dacirco.rest_api.rest_api:run_rest_api
+dacirco_rest_monitor = dacirco.rest_monitor.monitor:run_rest_monitor
+dacirco_scenario = dacirco.load_generator.play_scenario:run
+dacirco_tc_worker = dacirco.tc_worker.tc_worker:start_tc_worker
+dacirco_wait_scenario = dacirco.load_generator.play_wait_scenario:play_wait_scenario
+
